@@ -1,119 +1,166 @@
 #include <iostream>
+#include <vector>
+#include <cstring>
 #include <string>
-#include <cmath>
 using namespace std;
-//常数：
-//初始值
-int IV[8] = {
-	0x7380166f,0x4914b2b9,0x172442d7,0xda8a0600,
-	0xa96f30bc,0x163138aa,0xe38dee4d,0xb0fb0e4e
-};
-//常量
-int Tj(int j)
+
+
+typedef unsigned short uint16;
+typedef unsigned int uint32;
+uint32 lmove(uint32 val, unsigned int n)
 {
-	if (j >= 0 && j <= 15)
-		return 0x79cc4519;
-	else if (j >= 16 && j <= 63)
-		return 0x7a879d8a;
+    n = n % 32;
+    uint32 size = sizeof(val) * 8;
+    n = n % size;
+    return (val >> (size - n) | (val << n)); //左移
+    // return (val << (size - n) | (val >> n)); //右移
 }
 
-//布尔函数：
-int FF(int x, int y, int z, int j)
+static unsigned int IV[8] =
+{ 0x7380166f, 0x4914b2b9, 0x172442d7, 0xda8a0600,
+ 0xa96f30bc, 0x163138aa, 0xe38dee4d, 0xb0fb0e4e };
+
+static unsigned char buf[64] = { 0 };
+
+static unsigned int T[64] = { 0 };
+
+void T_init()
 {
-	if (j >= 0 && j <= 15)
-		return x ^ y ^ z;
-	else if (j >= 16 && j <= 63)
-		return (x & y) | (x & z) | (y & z);
+    for (unsigned int i = 0; i < 16; i++)
+        T[i] = 0x79cc4519;
+    for (unsigned int i = 16; i < 64; i++)
+        T[i] = 0x7a879d8a;
 }
 
-int GG(int x, int y, int z, int j)
+unsigned int FF(unsigned int x, unsigned int y, unsigned int z, unsigned int j)
 {
-	if (j >= 0 && j <= 15)
-		return x ^ y ^ z;
-	else if (j >= 16 && j <= 63)
-		return (x & y) | (~x & z);
+    if (j <= 15 && j >= 0)
+        return x ^ y ^ z;
+    else if (j >= 16 && j <= 63)
+        return (x & y) | (x & z) | (y & z);
+    return 0;
 }
 
-int P0(int x)
+unsigned int GG(unsigned int x, unsigned int y, unsigned int z, unsigned int j)
 {
-	return x ^ (x << 9) ^ (x << 17);
+    if (j >= 0 && j <= 15)
+        return x ^ y ^ z;
+    else if (j >= 16 && j <= 63)
+        return (x & y) | ((~x) & z);
+    return 0;
 }
 
-int P1(int x)
+unsigned int P0(unsigned int x)
 {
-	return x ^ (x << 15) ^ (x << 23);
+    return x ^ lmove(x, 9) ^ lmove(x, 17);
 }
 
-
-string extension(string str) {//消息扩展函数
-	string res = str;//字符串类型存储前68位存储扩展字W值
-	for (int i = 16; i < 68; i++) {//根据公式生成第17位到第68位的W值
-		res += XOR(XOR(P1(XOR(XOR(res.substr((i - 16) * 8, 8), res.substr((i - 9) * 8, 8)), LeftShift(res.substr((i - 3) * 8, 8), 15))), LeftShift(res.substr((i - 13) * 8, 8), 7)), res.substr((i - 6) * 8, 8));
-	}
-	cout << "扩展后的消息：" << endl;
-	cout << "W0,W1,……,W67的消息：" << endl;
-	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < 8; j++) {
-			cout << res.substr(i * 64 + j * 8, 8) << "  ";
-		}
-		cout << endl;
-	}
-	cout << res.substr(512, 8) << "  " << res.substr(520, 8) << "  " << res.substr(528, 8) << "  " << res.substr(536, 8) << endl;
-	cout << endl;
-	for (int i = 0; i < 64; i++) {//根据公式生成64位W'值
-		res += XOR(res.substr(i * 8, 8), res.substr((i + 4) * 8, 8));
-	}
-	cout << "W0',W1',……,W63'的消息：" << endl;
-	for (int i = 0; i < 8; i++) {
-		for (int j = 0; j < 8; j++) {
-			cout << res.substr(544 + i * 64 + j * 8, 8) << "  ";
-		}
-		cout << endl;
-	}
-	cout << endl;
-	return res;
+unsigned int P1(unsigned int x)
+{
+    return x ^ lmove(x, 15) ^ lmove(x, 23);
 }
 
-string compress(string str1, string str2) {//消息压缩函数
-	string IV = str2;
-	string A = IV.substr(0, 8), B = IV.substr(8, 8), C = IV.substr(16, 8), D = IV.substr(24, 8), E = IV.substr(32, 8), F = IV.substr(40, 8), G = IV.substr(48, 8), H = IV.substr(56, 8);
-	string SS1 = "", SS2 = "", TT1 = "", TT2 = "";
-	cout << "迭代压缩中间值: " << endl;
-	cout << "    A         B         C         D         E         F        G         H " << endl;
-	cout << A << "  " << B << "  " << C << "  " << D << "  " << E << "  " << F << "  " << G << "  " << H << endl;
-	for (int j = 0; j < 64; j++) {
-		SS1 = LeftShift(ModAdd(ModAdd(LeftShift(A, 12), E), LeftShift(T(j), (j % 32))), 7);
-		SS2 = XOR(SS1, LeftShift(A, 12));
-		TT1 = ModAdd(ModAdd(ModAdd(FF(A, B, C, j), D), SS2), str1.substr((j + 68) * 8, 8));
-		TT2 = ModAdd(ModAdd(ModAdd(GG(E, F, G, j), H), SS1), str1.substr(j * 8, 8));
-		D = C;
-		C = LeftShift(B, 9);
-		B = A;
-		A = TT1;
-		H = G;
-		G = LeftShift(F, 19);
-		F = E;
-		E = P0(TT2);
-		cout << A << "  " << B << "  " << C << "  " << D << "  " << E << "  " << F << "  " << G << "  " << H << endl;
-	}
-	string res = (A + B + C + D + E + F + G + H);
-	cout << endl;
-	return res;
+unsigned int CF(unsigned char* arr)
+{
+    unsigned int W[68];
+    unsigned int W_1[64];
+    unsigned int j;
+    unsigned int A, B, C, D, E, F, G, H;
+    unsigned int SS1, SS2, TT1, TT2;
+    for (j = 0; j < 16; j++)
+        W[j] = arr[j * 4 + 0] << 24 | arr[j * 4 + 1] << 16 | arr[j * 4 + 2] << 8 | arr[j * 4 + 3];
+    for (j = 16; j < 68; j++)
+        W[j] = P1(W[j - 16] ^ W[j - 9] ^ (lmove(W[j - 3], 15))) ^ (lmove(W[j - 13], 7)) ^ W[j - 6];
+    for (j = 0; j < 64; j++)
+        W_1[j] = W[j] ^ W[j + 4];
+    A = IV[0];
+    B = IV[1];
+    C = IV[2];
+    D = IV[3];
+    E = IV[4];
+    F = IV[5];
+    G = IV[6];
+    H = IV[7];
+    for (j = 0; j < 64; j++)
+    {
+        SS1 = lmove(((lmove(A, 12)) + E + (lmove(T[j], j))) & 0xFFFFFFFF, 7);
+        SS2 = SS1 ^ (lmove(A, 12));
+        TT1 = (FF(A, B, C, j) + D + SS2 + W_1[j]) & 0xFFFFFFFF;
+        TT2 = (GG(E, F, G, j) + H + SS1 + W[j]) & 0xFFFFFFFF;
+        D = C;
+        C = lmove(B, 9);
+        B = A;
+        A = TT1;
+        H = G;
+        G = lmove(F, 19);
+        F = E;
+        E = P0(TT2);
+    }
+
+    IV[0] = (A ^ IV[0]);
+    IV[1] = (B ^ IV[1]);
+    IV[2] = (C ^ IV[2]);
+    IV[3] = (D ^ IV[3]);
+    IV[4] = (E ^ IV[4]);
+    IV[5] = (F ^ IV[5]);
+    IV[6] = (G ^ IV[6]);
+    IV[7] = (H ^ IV[7]);
+    return 1;
 }
 
-string iteration(string str) {//迭代压缩函数实现
-	int num = str.size() / 128;
-	cout << "消息经过填充之后共有 " + to_string(num) + " 个消息分组。" << endl;
-	cout << endl;
-	string V = "7380166F4914B2B9172442D7DA8A0600A96F30BC163138AAE38DEE4DB0FB0E4E";
-	string B = "", extensionB = "", compressB = "";
-	for (int i = 0; i < num; i++) {
-		cout << "第 " << to_string(i + 1) << " 个消息分组：" << endl;
-		cout << endl;
-		B = str.substr(i * 128, 128);
-		extensionB = extension(B);
-		compressB = compress(extensionB, V);
-		V = XOR(V, compressB);
-	}
-	return V;
+void Block(unsigned char* msg, unsigned int msglen)
+{
+    unsigned int i;
+    unsigned int left = 0;
+    unsigned long long total = 0;
+
+    for (i = 0; i < msglen / 64; i++)
+    {
+        memcpy(buf, msg + i * 64, 64);
+        CF(buf);
+    }
+    total = msglen * 8;
+    left = msglen % 64;
+    memset(&buf[left], 0, 64 - left);
+    memcpy(buf, msg + i * 64, left);
+    buf[left] = 0x80;
+    if (left <= 55)
+    {
+        for (i = 0; i < 8; i++)
+            buf[56 + i] = (total >> ((8 - 1 - i) * 8)) & 0xFF;
+        CF(buf);
+    }
+    else
+    {
+        CF(buf);
+        memset(buf, 0, 64);
+        for (i = 0; i < 8; i++)
+            buf[56 + i] = (total >> ((8 - 1 - i) * 8)) & 0xFF;
+        CF(buf);
+    }
+}
+void out_hex()
+{
+    unsigned int i = 0;
+    for (i = 0; i < 8; i++)
+    {
+        printf("%08x ", IV[i]);
+    }
+    printf("\n");
+}
+
+unsigned int SM3(unsigned char* msg, unsigned int msglen, unsigned char* out_hash)
+{
+    T_init();
+    Block(msg, msglen);
+    out_hex();
+    return 1;
+}
+
+int main(int argc, char* argv[])
+{
+    unsigned char mes[] = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd";
+    unsigned int meslen = strlen((const char*)mes);
+    unsigned char hash[32] = { 0 };
+    SM3(mes, meslen, hash);
 }
