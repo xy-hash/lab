@@ -1,30 +1,28 @@
 #include <iostream>
-#include <vector>
-#include <cstring>
-#include <string>
+#include <chrono>
 using namespace std;
 
-
-typedef unsigned short uint16;
 typedef unsigned int uint32;
-uint32 lmove(uint32 val, unsigned int n)
+
+uint32 lshift(uint32 val, unsigned int n)
 {
     n = n % 32;
     uint32 size = sizeof(val) * 8;
     n = n % size;
-    return (val >> (size - n) | (val << n)); //左移
-    // return (val << (size - n) | (val >> n)); //右移
+    return (val >> (size - n) | (val << n)); 
 }
 
-static unsigned int IV[8] =
+unsigned int IV[8] =
 { 0x7380166f, 0x4914b2b9, 0x172442d7, 0xda8a0600,
  0xa96f30bc, 0x163138aa, 0xe38dee4d, 0xb0fb0e4e };
 
-static unsigned char buf[64] = { 0 };
+unsigned char arr[64] = {0};
+unsigned int T[64] = {0};
 
-static unsigned int T[64] = { 0 };
+unsigned int W0[68];
+unsigned int W1[64];
 
-void T_init()
+void Tj()
 {
     for (unsigned int i = 0; i < 16; i++)
         T[i] = 0x79cc4519;
@@ -52,115 +50,107 @@ unsigned int GG(unsigned int x, unsigned int y, unsigned int z, unsigned int j)
 
 unsigned int P0(unsigned int x)
 {
-    return x ^ lmove(x, 9) ^ lmove(x, 17);
+    return x ^ lshift(x, 9) ^ lshift(x, 17);
 }
 
 unsigned int P1(unsigned int x)
 {
-    return x ^ lmove(x, 15) ^ lmove(x, 23);
+    return x ^ lshift(x, 15) ^ lshift(x, 23);
 }
 
-unsigned int CF(unsigned char* arr)
+
+
+void extend(unsigned char* arr)
 {
-    unsigned int W[68];
-    unsigned int W_1[64];
     unsigned int j;
-    unsigned int A, B, C, D, E, F, G, H;
-    unsigned int SS1, SS2, TT1, TT2;
     for (j = 0; j < 16; j++)
-        W[j] = arr[j * 4 + 0] << 24 | arr[j * 4 + 1] << 16 | arr[j * 4 + 2] << 8 | arr[j * 4 + 3];
+        W0[j] = arr[j * 4 + 0] << 24 | arr[j * 4 + 1] << 16 | arr[j * 4 + 2] << 8 | arr[j * 4 + 3];
     for (j = 16; j < 68; j++)
-        W[j] = P1(W[j - 16] ^ W[j - 9] ^ (lmove(W[j - 3], 15))) ^ (lmove(W[j - 13], 7)) ^ W[j - 6];
+        W0[j] = P1(W0[j - 16] ^ W0[j - 9] ^ (lshift(W0[j - 3], 15))) ^ (lshift(W0[j - 13], 7)) ^ W0[j - 6];
     for (j = 0; j < 64; j++)
-        W_1[j] = W[j] ^ W[j + 4];
-    A = IV[0];
-    B = IV[1];
-    C = IV[2];
-    D = IV[3];
-    E = IV[4];
-    F = IV[5];
-    G = IV[6];
-    H = IV[7];
+        W1[j] = W0[j] ^ W0[j + 4];
+}
+
+unsigned int compress(unsigned char* arr)
+{   
+    unsigned int j;
+    unsigned int set[8];
+    unsigned int SS1, SS2, TT1, TT2;
+    extend(arr);
+    for (int i = 0; i < 8; i++)
+    {
+        set[i] = IV[i];
+    }
     for (j = 0; j < 64; j++)
     {
-        SS1 = lmove(((lmove(A, 12)) + E + (lmove(T[j], j))) & 0xFFFFFFFF, 7);
-        SS2 = SS1 ^ (lmove(A, 12));
-        TT1 = (FF(A, B, C, j) + D + SS2 + W_1[j]) & 0xFFFFFFFF;
-        TT2 = (GG(E, F, G, j) + H + SS1 + W[j]) & 0xFFFFFFFF;
-        D = C;
-        C = lmove(B, 9);
-        B = A;
-        A = TT1;
-        H = G;
-        G = lmove(F, 19);
-        F = E;
-        E = P0(TT2);
+        SS1 = lshift((lshift(set[0], 12)) + set[4] + (lshift(T[j], j)) , 7);
+        SS2 = SS1 ^ (lshift(set[0], 12));
+        TT1 = FF(set[0], set[1], set[2], j) + set[3] + SS2 + W1[j] ;
+        TT2 = GG(set[4], set[5], set[6], j) + set[7] + SS1 + W0[j] ;
+        set[3] = set[2];
+        set[2] = lshift(set[1], 9);
+        set[1] = set[0];
+        set[0] = TT1;
+        set[7] = set[6];
+        set[6] = lshift(set[5], 19);
+        set[5] = set[4];
+        set[4] = P0(TT2);
     }
-
-    IV[0] = (A ^ IV[0]);
-    IV[1] = (B ^ IV[1]);
-    IV[2] = (C ^ IV[2]);
-    IV[3] = (D ^ IV[3]);
-    IV[4] = (E ^ IV[4]);
-    IV[5] = (F ^ IV[5]);
-    IV[6] = (G ^ IV[6]);
-    IV[7] = (H ^ IV[7]);
+    for (int i = 0; i < 8; i++)
+    {
+        IV[i] = set[i] ^ IV[i];
+    }
     return 1;
 }
 
-void Block(unsigned char* msg, unsigned int msglen)
+
+void sm3(unsigned char* data, unsigned int len)
 {
     unsigned int i;
     unsigned int left = 0;
-    unsigned long long total = 0;
-
-    for (i = 0; i < msglen / 64; i++)
+    unsigned long long bits = 0;
+    int limit = len / 64;
+    for (i = 0; i < limit; i++)
     {
-        memcpy(buf, msg + i * 64, 64);
-        CF(buf);
+        memcpy(arr, data + i * 64, 64);
+        compress(arr);
     }
-    total = msglen * 8;
-    left = msglen % 64;
-    memset(&buf[left], 0, 64 - left);
-    memcpy(buf, msg + i * 64, left);
-    buf[left] = 0x80;
+    bits = len * 8;
+    left = len % 64;
+    memset(&arr[left], 0, 64 - left);
+    memcpy(arr, data + i * 64, left);
+    arr[left] = 128;
     if (left <= 55)
     {
         for (i = 0; i < 8; i++)
-            buf[56 + i] = (total >> ((8 - 1 - i) * 8)) & 0xFF;
-        CF(buf);
+            arr[56 + i] = bits >> ((8 - 1 - i) * 8) ;
+        compress(arr);
     }
     else
     {
-        CF(buf);
-        memset(buf, 0, 64);
+        compress(arr);
+        memset(arr, 0, 64);
         for (i = 0; i < 8; i++)
-            buf[56 + i] = (total >> ((8 - 1 - i) * 8)) & 0xFF;
-        CF(buf);
+            arr[56 + i] = bits >> ((8 - 1 - i) * 8) ;
+        compress(arr);
     }
 }
-void out_hex()
+
+
+
+int main()
 {
-    unsigned int i = 0;
-    for (i = 0; i < 8; i++)
+    Tj();
+    unsigned char msg[] = "wanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijianwanganchuangxinchuangyeshijian";
+    unsigned int len = strlen((const char*)msg);    
+    auto tp1 = std::chrono::steady_clock::now();
+    sm3(msg, len);
+    auto tp2 = std::chrono::steady_clock::now();
+    for (int i = 0; i < 8; i++)
     {
-        printf("%08x ", IV[i]);
+        cout << hex << IV[i] << " ";
     }
-    printf("\n");
-}
-
-unsigned int SM3(unsigned char* msg, unsigned int msglen, unsigned char* out_hash)
-{
-    T_init();
-    Block(msg, msglen);
-    out_hex();
-    return 1;
-}
-
-int main(int argc, char* argv[])
-{
-    unsigned char mes[] = "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd";
-    unsigned int meslen = strlen((const char*)mes);
-    unsigned char hash[32] = { 0 };
-    SM3(mes, meslen, hash);
+    cout << endl;
+    cout << "total bytes: " << dec << len << endl;
+    cout << "time used: " <<chrono::duration_cast<chrono::microseconds>(tp2 - tp1).count() << "microseconds" << std::endl;
 }
