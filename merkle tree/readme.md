@@ -17,7 +17,7 @@ merkle tree实现起来其实和实现一个二叉树差不多
 
 这个和一般树不同的地方在于hash，也是主要运算的地方
 
-这里的sha256.h按照标准，我没有重新撰写，copy from：
+这里的sha256.h本来可以用sm3，但是按照标准，我没有重新撰写，copy from：
 https://blog.csdn.net/LucainY/article/details/103066247
 
 main函数中主要的部分为for循环
