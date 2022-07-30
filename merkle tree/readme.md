@@ -21,9 +21,13 @@ merkle tree实现起来其实和实现一个二叉树差不多
 https://blog.csdn.net/LucainY/article/details/103066247
 
 main函数中主要的部分为for循环
+
 i的上限表示生成的leaves数量
+
 leaves用vector存储
 
 当生成所有的叶节点之后，再根据叶节点一步一步计算回去
+
 具体计算方法：
+
 父节点hash=hash(左子节点hash+右子节点hash)
