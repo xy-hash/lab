@@ -17,9 +17,8 @@ struct Node {
 
 struct MerkleTree {
     Node* root;
-    MerkleTree(vector<Node*> blocks);
+    MerkleTree(vector<Node*> blk);
     ~MerkleTree();
-    void draw(Node* n, int indent);
     void dlt(Node* n);
 };
 
@@ -30,12 +29,6 @@ string sha256(string str) {
     return hash_str;
 }
 
-
-void printNodeHashes(vector<Node*> v) {
-    for (unsigned int a = 0; a < v.size(); a++) {
-        cout << v[a]->hash << endl;
-    }
-}
 
 
 MerkleTree::MerkleTree(vector<Node*> blk)
@@ -65,25 +58,6 @@ MerkleTree::~MerkleTree()
     dlt(root);
 }
 
-
-
-void MerkleTree::draw(Node* n, int space)
-{
-    if (n)
-    {
-        if (n->left) {
-            draw(n->left, space + 4);
-        }
-        if (n->right) {
-            draw(n->right, space + 4);
-        }
-        if (space) {
-            std::cout << setw(space) << ' ';
-        }
-        std::cout << n->hash[0] << "\n ";
-    }
-}
-
 void MerkleTree::dlt(Node* n)
 {
     if (n) {
@@ -93,6 +67,8 @@ void MerkleTree::dlt(Node* n)
         delete n;
     }
 }
+
+
 
 int main() {
     vector<Node*> leaves;
