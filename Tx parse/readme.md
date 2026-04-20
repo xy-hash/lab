@@ -3,10 +3,6 @@ Parse the tx data
 手动拆分，将tx文本最前面包含两段txin和两端txout截取进行了拆分
 
 
-小组信息
-----
-戈智昂 网安20级4班 202000460145
-
 格式参考
 ----
 ![image](pic/tx.png)
